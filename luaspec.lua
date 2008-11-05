@@ -2,26 +2,6 @@ spec = {
   contexts = {}, passed = 0, failed = 0, current = nil
 }
 
-setmetatable(spec, { __gc = function() print "gc" end })
-
-It = {}
-
-function It:new(name, f)
-	local o = { name = name, f = f }
-	self.__index = self
-	setmetatable(o, self)
-	return o
-end
-
-Before = {}
-
-function Before:new(f)
-	local o = { f = f }
-	self.__index = self
-	setmetatable(o, self)
-	return o
-end
-
 function describe(name)
 	-- Hack reserve hash ordering
 	spec.contexts[#spec.contexts+1] = name
@@ -45,11 +25,9 @@ function describe(name)
 		
 			setfenv(spec_func, env)
 			spec_func()
-		end
-		
+		end		
 	end
 end
-
 
 spec.report = function(verbose)
   local total = spec.passed + spec.failed
@@ -90,30 +68,30 @@ spec.report = function(verbose)
 end
 
 matchers = {	
-  should_be = function(value, expected)
-    if value ~= expected then
-      return false, "expecting "..tostring(expected)..", not ".. tostring(value)
-    end
-    return true
-  end;
-    
-  should_not_be = function(value, expected)
-    if value == expected then
-      return false, "should not be "..value
-    end
-    return true
-  end;
+	should_be = function(value, expected)
+		if value ~= expected then
+			return false, "expecting "..tostring(expected)..", not ".. tostring(value)
+		end
+			return true
+	end;
 
-  should_match = function(value, pattern) 
-    if type(value) ~= 'string' then
-      return false, "type error, should_match expecting target as string"
-    end
-    
-    if not string.match(value, pattern) then
-      return false, value .. "doesn't match pattern "..pattern
-    end
-    return true
-  end;  
+	should_not_be = function(value, expected)
+		if value == expected then
+			return false, "should not be "..value
+		end
+		return true
+	end;
+
+	should_match = function(value, pattern) 
+		if type(value) ~= 'string' then
+			return false, "type error, should_match expecting target as string"
+		end
+
+		if not string.match(value, pattern) then
+			return false, value .. "doesn't match pattern "..pattern
+		end
+		return true
+	end;  
 }
  
 matchers.should_equal = matchers.should_be
@@ -125,13 +103,13 @@ function expect(target)
 			local success, message = matchers[matcher](target, ...)
 			
 			if spec.current.passed then
-			spec.current.passed = success
+				spec.current.passed = success
 			end
 
 			if success then
 				spec.passed = spec.passed + 1
 			else
-				table.insert(spec.current.errors , { message = message, trace = debug.traceback()} )
+				table.insert(spec.current.errors , { message = message, trace = debug.traceback() } )
 				spec.failed = spec.failed + 1
 			end
 		end
