@@ -30,41 +30,40 @@ function describe(name)
 end
 
 spec.report = function(verbose)
-  local total = spec.passed + spec.failed
-  local percent = spec.passed/total*100
-  local contexts = spec.contexts
-  local summery
-  
-  if spec.failed == 0 and not verbose then
-    print "all tests passed"
-    return
-  end
-  
-  -- HACK: preserve hash ordering
-  for index = 1, #contexts do
-    local context, cases = contexts[index], contexts[contexts[index]]
-    print (("%s\n================================"):format(context))
-    
-    for description, result in pairs(cases) do
-      local outcome = result.passed and 'pass' or "FAILED"
+	local total = spec.passed + spec.failed
+	local percent = spec.passed/total*100
+	local contexts = spec.contexts
 
-      if verbose or not (verbose and result.passed) then
-        print(("%-70s [ %s ]"):format(" - " .. description, outcome))
+	if spec.failed == 0 and not verbose then
+		print "all tests passed"
+		return
+	end
 
-        table.foreach(result.errors, function(index, error)
-          print ("   ".. index..". Failed expectation : ".. error.message.."\n   "..error.trace)
-        end)
-      end
-    end
-  end
-  
-  summery = [[
-=========  Summery  ============
-  %s Expectations
-    Passed : %s, Failed : %s, Success rate : %.2f percent
-  ]]
-  
-  print (summery:format(total, spec.passed, spec.failed, percent))
+	-- HACK: preserve hash ordering
+	for index = 1, #contexts do
+		local context, cases = contexts[index], contexts[contexts[index]]
+		print (("%s\n================================"):format(context))
+
+		for description, result in pairs(cases) do
+			local outcome = result.passed and 'pass' or "FAILED"
+
+			if verbose or not (verbose and result.passed) then
+				print(("%-70s [ %s ]"):format(" - " .. description, outcome))
+
+				table.foreach(result.errors, function(index, error)
+					print ("   ".. index..". Failed expectation : ".. error.message.."\n   "..error.trace)
+				end)
+			end
+		end
+	end
+
+	local summary = [[
+	=========  Summery  ============
+	%s Expectations
+	Passed : %s, Failed : %s, Success rate : %.2f percent
+	]]
+
+	print (summary:format(total, spec.passed, spec.failed, percent))
 end
 
 matchers = {	
@@ -72,7 +71,7 @@ matchers = {
 		if value ~= expected then
 			return false, "expecting "..tostring(expected)..", not ".. tostring(value)
 		end
-			return true
+		return true
 	end;
 
 	should_not_be = function(value, expected)
