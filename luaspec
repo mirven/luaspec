@@ -1,9 +1,6 @@
 #!/usr/bin/env lua
--- # set LUA_PATH="src/?.lua;?.lua"
--- # lua
 
 package.path = "src/?.lua;example/?.lua;"..package.path
-print(package.path)
 
 for i=1,#arg do
 	dofile(arg[i])

@@ -39,6 +39,41 @@ Passed : %s, Failed : %s, Success rate : %.2f percent
 	print(summary:format(total, spec.passed, spec.failed, percent))
 end
 
+function spec.add_results(success, message, trace)
+	if spec.current.passed then
+		spec.current.passed = success
+	end
+
+	if success then
+		spec.passed = spec.passed + 1
+	else
+		table.insert(spec.current.errors , { message = message, trace = trace } )
+		spec.failed = spec.failed + 1
+	end
+end
+
+local pending = {
+}
+
+local pending_mt = {}
+
+function pending_mt.__newindex() error("You can't set properties on pending") end
+function pending_mt.__index(_, key) 
+	if key == "description" then 
+		return nil 
+	else
+		error("You can't get properties on pending") 
+	end
+end
+function pending_mt.__call(_, description)
+	local o = { description = description}
+	setmetatable(o, pending_mt)
+	return o
+end	
+
+
+setmetatable(pending, pending_mt)
+
 
 matchers = {	
 	should_be = function(value, expected)
@@ -75,16 +110,18 @@ function expect(target)
 		return function(...)
 			local success, message = matchers[matcher](target, ...)
 			
-			if spec.current.passed then
-				spec.current.passed = success
-			end
+			spec.add_results(success, message, debug.traceback())
 			
-			if success then
-				spec.passed = spec.passed + 1
-			else
-				table.insert(spec.current.errors , { message = message, trace = debug.traceback() } )
-				spec.failed = spec.failed + 1
-			end
+			-- if spec.current.passed then
+			-- 	spec.current.passed = success
+			-- end
+			-- 
+			-- if success then
+			-- 	spec.passed = spec.passed + 1
+			-- else
+			-- 	table.insert(spec.current.errors , { message = message, trace = debug.traceback() } )
+			-- 	spec.failed = spec.failed + 1
+			-- end
 		end
 	end})
 	return t
@@ -98,25 +135,32 @@ function run_context(name, context, before_stack)
 	local c = spec.contexts[name]
 	
 	for k, spec_func in pairs(context.specs) do
-		c[k] = { passed = true, errors = {} }
-		spec.current = c[k]
+		
+		if getmetatable(spec_func) == pending_mt then
+			print(spec_func.description)
+			print "pending, ignore"
+		else
+			c[k] = { passed = true, errors = {} }
+			spec.current = c[k]
 	
-		-- setup the environment that the spec is run in, each spec is run in a new environment
-		local env = {}
-		setmetatable(env, { __index = _G })
+			-- setup the environment that the spec is run in, each spec is run in a new environment
+			local env = {}
+			setmetatable(env, { __index = _G })
 		
-		for _, before in ipairs(before_stack) do
-			setfenv(before, env)
-			before()
-		end
+			-- run all before's on enclosing contexts
+			for _, before in ipairs(before_stack) do
+				setfenv(before, env)
+				before()
+			end
 		
-		if context.before then
-			setfenv(context.before, env)
-			context.before()
-		end
+			if context.before then
+				setfenv(context.before, env)
+				context.before()
+			end
 
-		setfenv(spec_func, env)
-		spec_func()			
+			setfenv(spec_func, env)
+			spec_func()			
+		end
 	end
 	
 	before_stack[#before_stack+1] = context.before
@@ -130,8 +174,10 @@ function create_context_env()
 	-- create an environment to run the function in
 	local context_env = {
 		it = {},
-		describe = {}
+		describe = {},
+		pending = pending
 	}
+	
 
 	-- create and set metatables for 'it'
 	local specs = {}
