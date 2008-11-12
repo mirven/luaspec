@@ -133,7 +133,8 @@ end
 
 function run_context(context_name, context, before_stack)
 	before_stack = before_stack or {}
-		
+	
+	-- run all of the context's specs
 	for spec_name, spec_func in pairs(context.specs) do
 		
 		if getmetatable(spec_func) == pending_mt then
@@ -161,10 +162,11 @@ function run_context(context_name, context, before_stack)
 		end
 	end
 	
+	-- update the before_stack with current before and run sub-contexts
 	before_stack[#before_stack+1] = context.before
 	
-	for n,c in pairs(context.sub_contexts) do
-		run_context(n, c, before_stack)
+	for subcontext_name, subcontext in pairs(context.sub_contexts) do
+		run_context(subcontext_name, subcontext, before_stack)
 	end
 end
 
