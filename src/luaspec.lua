@@ -52,9 +52,7 @@ function spec.add_results(success, message, trace)
 	end
 end
 
-local pending = {
-}
-
+local pending = {}
 local pending_mt = {}
 
 function pending_mt.__newindex() error("You can't set properties on pending") end
@@ -111,17 +109,6 @@ function expect(target)
 			local success, message = matchers[matcher](target, ...)
 			
 			spec.add_results(success, message, debug.traceback())
-			
-			-- if spec.current.passed then
-			-- 	spec.current.passed = success
-			-- end
-			-- 
-			-- if success then
-			-- 	spec.passed = spec.passed + 1
-			-- else
-			-- 	table.insert(spec.current.errors , { message = message, trace = debug.traceback() } )
-			-- 	spec.failed = spec.failed + 1
-			-- end
 		end
 	end})
 	return t
@@ -225,54 +212,3 @@ describe = {}
 
 describe_mt, contexts = make_describe_mt(true)
 setmetatable(describe, describe_mt)
-
--- --
--- require 'stack'
--- 
--- describe["A Stack"] = function()
--- 	before = function()
--- 		s = Stack:new()
--- 	end
--- 	
--- 	it["should be empty to start with"] = function()
--- 		expect(s:top()).should_be(nil)
--- 	end
--- 	
--- 	it["should allow items to be pushed"] = function()
--- 		s:push(30)
--- 		expect(s:top()).should_be(30)
--- 	end
--- end
--- 
--- describe["Another Stack"] = function()
--- 	before = function()
--- 		s = Stack:new()
--- 	end
--- 	
--- 	describe["a Sub Stack"] = function()
--- 		before = function()
--- 			-- s = Stack:new()
--- 		end
--- 
--- 		it["--should be empty to start with"] = function()
--- 			-- expect(s:top()).should_be(nil)
--- 		end
--- 
--- 		it["--should allow items to be pushed"] = function()
--- 			-- s:push(30)
--- 			-- expect(s:top()).should_be(30)
--- 		end
--- 	end
--- 	
--- 	it["should be empty to start with-"] = function()
--- 		-- expect(s:top()).should_be(nil)
--- 	end
--- 	
--- 	it["should allow items to be pushed-"] = function()
--- 		-- s:push(30)
--- 		-- expect(s:top()).should_be(30)
--- 	end
--- end
--- 
--- spec.report(true)
--- -- run_context(k, context_env.before, context_env.after, specs, sub_contexts)
