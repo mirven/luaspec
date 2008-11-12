@@ -57,10 +57,21 @@ function spec.add_context(name)
 	spec.contexts[name] = {}	
 end
 
+function spec.add_spec(context_name, spec_name)
+	local context = spec.contexts[context_name]
+	context[spec_name] = { passed = true, errors = {} }
+	spec.current = context[spec_name]
+end
+
+function spec.add_pending_spec(context_name, spec_name, pending_description)
+end
+
+-- create tables to support pending specifications
 local pending = {}
 local pending_mt = {}
 
 function pending_mt.__newindex() error("You can't set properties on pending") end
+
 function pending_mt.__index(_, key) 
 	if key == "description" then 
 		return nil 
@@ -68,15 +79,16 @@ function pending_mt.__index(_, key)
 		error("You can't get properties on pending") 
 	end
 end
+
 function pending_mt.__call(_, description)
 	local o = { description = description}
 	setmetatable(o, pending_mt)
 	return o
 end	
 
-
 setmetatable(pending, pending_mt)
 
+-- define matchers
 
 matchers = {	
 	should_be = function(value, expected)
@@ -119,22 +131,16 @@ function expect(target)
 	return t
 end
 
-
--- function run_context(name, before, after, specs, sub_contexts)
-function run_context(name, context, before_stack)
+function run_context(context_name, context, before_stack)
 	before_stack = before_stack or {}
-	
-	local c = spec.contexts[name]
-	
-	for k, spec_func in pairs(context.specs) do
+		
+	for spec_name, spec_func in pairs(context.specs) do
 		
 		if getmetatable(spec_func) == pending_mt then
-			print(spec_func.description)
-			print "pending, ignore"
+			spec.add_spec(context_name, spec_name, spec_func.description)
 		else
-			c[k] = { passed = true, errors = {} }
-			spec.current = c[k]
-	
+			spec.add_spec(context_name, spec_name)
+			
 			-- setup the environment that the spec is run in, each spec is run in a new environment
 			local env = {}
 			setmetatable(env, { __index = _G })
