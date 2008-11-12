@@ -137,7 +137,7 @@ function run_context(context_name, context, before_stack)
 	for spec_name, spec_func in pairs(context.specs) do
 		
 		if getmetatable(spec_func) == pending_mt then
-			spec.add_spec(context_name, spec_name, spec_func.description)
+			spec.add_pending_spec(context_name, spec_name, spec_func.description)
 		else
 			spec.add_spec(context_name, spec_name)
 			
