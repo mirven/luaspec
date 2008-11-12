@@ -52,6 +52,11 @@ function spec.add_results(success, message, trace)
 	end
 end
 
+function spec.add_context(name)	
+	spec.contexts[#spec.contexts+1] = name
+	spec.contexts[name] = {}	
+end
+
 local pending = {}
 local pending_mt = {}
 
@@ -158,57 +163,69 @@ function run_context(name, context, before_stack)
 end
 
 function create_context_env()
+
+	local it, specs = make_it()
+	local describe, sub_contexts = make_describe()
+
 	-- create an environment to run the function in
 	local context_env = {
-		it = {},
-		describe = {},
+		it = it,
+		describe = describe,
 		pending = pending
 	}
-	
-
-	-- create and set metatables for 'it'
-	local specs = {}
-	setmetatable(context_env.it, {
-		__newindex = function(t, k, v)
-			specs[k] = v
-		end
-	})
-
-	-- and for 'describe'
-	local mt, sub_contexts = make_describe_mt()
-	setmetatable(context_env.describe, mt)
 	
 	return context_env, sub_contexts, specs
 end
 
-function make_describe_mt(auto_run)
+function make_it()
+	-- create and set metatables for 'it'
+	local specs = {}
+	local it = {}
+	setmetatable(it, {
+		-- this is called when it is assigned a function (e.g. it["spec name"] = function() ...)
+		__newindex = function(_, spec_name, spec_function)
+			specs[spec_name] = spec_function
+		end
+	})
+	
+	return it, specs
+end
+
+function make_describe(auto_run)
+	local describe = {}
 	local contexts = {}
 	local describe_mt = {
-		__newindex = function(t, k, v)
 		
-			spec.contexts[#spec.contexts+1] = k
-			spec.contexts[k] = {}
+		-- This function is called when a function is assigned to a describe table (e.g. describe["context name"] = function() ...)
+		__newindex = function(_, context_name, context_function)
+		
+			spec.add_context(context_name)
 
 			local context_env, sub_contexts, specs = create_context_env()
 			
 			-- set the environment
-			setfenv(v, context_env)
+			setfenv(context_function, context_env)
 			
 			-- run the context function which collects the data into context_env and sub_contexts
-			v()			
+			context_function()			
 			
 			-- store the describe function in contexts
-			contexts[k] = { before=context_env.before, after=context_env.after, specs=specs, sub_contexts = sub_contexts }
+			contexts[context_name] = { 
+				before=context_env.before, 
+				after=context_env.after, 
+				specs=specs, 
+				sub_contexts = sub_contexts 
+			}
 			
 			if auto_run then
-				run_context(k, contexts[k])
+				run_context(context_name, contexts[context_name])
 			end
 		end
 	}
-	return describe_mt, contexts
+	
+	setmetatable(describe, describe_mt)
+	
+	return describe, contexts
 end
 
-describe = {}
-
-describe_mt, contexts = make_describe_mt(true)
-setmetatable(describe, describe_mt)
+describe = make_describe(true)
