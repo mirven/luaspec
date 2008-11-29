@@ -6,4 +6,4 @@ for i=1,#arg do
 	dofile(arg[i])
 end
 
-spec.report(true)
+spec:report(true)

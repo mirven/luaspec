@@ -1,29 +1,47 @@
 spec = {
-  contexts = {}, passed = 0, failed = 0, current = nil
+  contexts = {}, passed = 0, failed = 0, pending = 0, current = nil
 }
 
-function spec.report(verbose)
-	local total = spec.passed + spec.failed
-	local percent = spec.passed/total*100
-	local contexts = spec.contexts
+function spec:compute_report()
+	local report = {		
+		num_passed = self.passed,
+		num_failed = self.failed,
+		num_pending = self.pending,
+		total = self.passed + self.failed + self.pending,
+		results = {}
+	}
+	report.percent = self.passed/report.total*100
+	
+	local contexts = self.contexts
+	
+	for index = 1, #contexts do
+		report.results[index] = {
+			name = contexts[index],			
+			spec_results = contexts[contexts[index]]
+		}
+	end		
+	
+	return report	
+end
 
-	if spec.failed == 0 and not verbose then
+function spec:report(verbose)
+	local report = self:compute_report()
+
+	if report.num_failed == 0 and not verbose then
 		print "all tests passed"
 		return
 	end
+	
+	for _, result in pairs(report.results) do
+		print(("%s\n================================"):format(result.name))
+		
+		for description, r in pairs(result.spec_results) do
+			local outcome = r.passed and 'pass' or "FAILED"
 
-	-- HACK: preserve hash ordering
-	for index = 1, #contexts do
-		local context, cases = contexts[index], contexts[contexts[index]]
-		print(("%s\n================================"):format(context))
-
-		for description, result in pairs(cases) do
-			local outcome = result.passed and 'pass' or "FAILED"
-
-			if verbose or not (verbose and result.passed) then
+			if verbose or not (verbose and r.passed) then
 				print(("%-70s [ %s ]"):format(" - " .. description, outcome))
 
-				table.foreach(result.errors, function(index, error)
+				table.foreach(r.errors, function(index, error)
 					print("   ".. index..". Failed expectation : ".. error.message.."\n   "..error.trace)
 				end)
 			end
@@ -36,34 +54,34 @@ function spec.report(verbose)
 Passed : %s, Failed : %s, Success rate : %.2f percent
 ]]
 
-	print(summary:format(total, spec.passed, spec.failed, percent))
+	print(summary:format(report.total, report.num_passed, report.num_failed, report.percent))
 end
 
-function spec.add_results(success, message, trace)
-	if spec.current.passed then
-		spec.current.passed = success
+function spec:add_results(success, message, trace)
+	if self.current.passed then
+		self.current.passed = success
 	end
 
 	if success then
-		spec.passed = spec.passed + 1
+		self.passed = self.passed + 1
 	else
-		table.insert(spec.current.errors , { message = message, trace = trace } )
-		spec.failed = spec.failed + 1
+		table.insert(self.current.errors , { message = message, trace = trace } )
+		self.failed = self.failed + 1
 	end
 end
 
-function spec.add_context(name)	
-	spec.contexts[#spec.contexts+1] = name
-	spec.contexts[name] = {}	
+function spec:add_context(name)	
+	self.contexts[#self.contexts+1] = name
+	self.contexts[name] = {}	
 end
 
-function spec.add_spec(context_name, spec_name)
-	local context = spec.contexts[context_name]
+function spec:add_spec(context_name, spec_name)
+	local context = self.contexts[context_name]
 	context[spec_name] = { passed = true, errors = {} }
-	spec.current = context[spec_name]
+	self.current = context[spec_name]
 end
 
-function spec.add_pending_spec(context_name, spec_name, pending_description)
+function spec:add_pending_spec(context_name, spec_name, pending_description)
 end
 
 -- create tables to support pending specifications
@@ -100,7 +118,14 @@ matchers = {
 
 	should_not_be = function(value, expected)
 		if value == expected then
-			return false, "should not be "..value
+			return false, "should not be "..tostring(value)
+		end
+		return true
+	end;
+	
+	should_error = function(f)
+		if pcall(f) then
+			return false, "expecting an error but received none"
 		end
 		return true
 	end;
@@ -119,31 +144,44 @@ matchers = {
  
 matchers.should_equal = matchers.should_be
 
-function expect(target)
+-- expect returns an empty table with a 'method missing' metatable
+-- which looks up the matcher.  The 'method missing' function
+-- runs the matcher and records the result in the current spec
+local function expect(target)
 	local t = {}
-	setmetatable(t, { __index = function(t, matcher)
-		return function(...)
-			local success, message = matchers[matcher](target, ...)
+	setmetatable(t, { 
+		__index = function(t, matcher)
+			return function(...)
+				local success, message = matchers[matcher](target, ...)
 			
-			spec.add_results(success, message, debug.traceback())
+				spec:add_results(success, message, debug.traceback())
+			end
 		end
-	end})
+	})
 	return t
 end
 
-function run_context(context_name, context, before_stack)
+local function run_context(context_name, context, before_stack)
 	before_stack = before_stack or {}
 	
 	-- run all of the context's specs
 	for spec_name, spec_func in pairs(context.specs) do
 		
+		-- check to see if the spec is pending or not
 		if getmetatable(spec_func) == pending_mt then
-			spec.add_pending_spec(context_name, spec_name, spec_func.description)
+			spec:add_pending_spec(context_name, spec_name, spec_func.description)
 		else
-			spec.add_spec(context_name, spec_name)
+			spec:add_spec(context_name, spec_name)
 			
 			-- setup the environment that the spec is run in, each spec is run in a new environment
-			local env = {}
+			local env = {
+				track_error = function(f)
+					local status, err = pcall(f)
+					return err
+				end,
+				
+				expect = expect
+			}
 			setmetatable(env, { __index = _G })
 		
 			-- run all before's on enclosing contexts
@@ -170,22 +208,7 @@ function run_context(context_name, context, before_stack)
 	end
 end
 
-function create_context_env()
-
-	local it, specs = make_it()
-	local describe, sub_contexts = make_describe()
-
-	-- create an environment to run the function in
-	local context_env = {
-		it = it,
-		describe = describe,
-		pending = pending
-	}
-	
-	return context_env, sub_contexts, specs
-end
-
-function make_it()
+local function make_it_table()
 	-- create and set metatables for 'it'
 	local specs = {}
 	local it = {}
@@ -199,15 +222,35 @@ function make_it()
 	return it, specs
 end
 
-function make_describe(auto_run)
+local make_describe_table
+
+-- create an environment to run a context function in as well as the tables to collect 
+-- the subcontexts and specs
+local function create_context_env()
+	local it, specs = make_it_table()
+	local describe, sub_contexts = make_describe_table()
+
+	-- create an environment to run the function in
+	local context_env = {
+		it = it,
+		describe = describe,
+		pending = pending
+	}
+	
+	return context_env, sub_contexts, specs
+end
+
+-- Note: this is declared locally earlier so it is still local, not 100% sure why i can't redeclare it as local
+function make_describe_table(auto_run)
 	local describe = {}
 	local contexts = {}
 	local describe_mt = {
 		
-		-- This function is called when a function is assigned to a describe table (e.g. describe["context name"] = function() ...)
+		-- This function is called when a function is assigned to a describe table 
+		-- (e.g. describe["context name"] = function() ...)
 		__newindex = function(_, context_name, context_function)
 		
-			spec.add_context(context_name)
+			spec:add_context(context_name)
 
 			local context_env, sub_contexts, specs = create_context_env()
 			
@@ -236,4 +279,4 @@ function make_describe(auto_run)
 	return describe, contexts
 end
 
-describe = make_describe(true)
+describe = make_describe_table(true)

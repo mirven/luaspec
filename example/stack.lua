@@ -16,5 +16,8 @@ function Stack:top()
 end
 
 function Stack:pop()
+	if #self.stack == 0 then 
+		error("Nothing on the stack")
+	end
 	self.stack[#self.stack] = nil
 end
