@@ -196,7 +196,10 @@ local function run_context(context_name, context, before_stack)
 			end
 
 			setfenv(spec_func, env)
-			spec_func()			
+			local success, message = pcall(spec_func)
+			if not success then
+				spec:add_results(false, message, debug.traceback())
+			end
 		end
 	end
 	
