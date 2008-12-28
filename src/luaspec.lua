@@ -161,8 +161,10 @@ local function expect(target)
 	return t
 end
 
-local function run_context(context_name, context, before_stack)
+local function run_context(context_name, context, before_stack, after_stack)
+
 	before_stack = before_stack or {}
+	after_stack = after_stack or {}
 	
 	-- run all of the context's specs
 	for spec_name, spec_func in pairs(context.specs) do
@@ -197,17 +199,45 @@ local function run_context(context_name, context, before_stack)
 
 			setfenv(spec_func, env)
 			local success, message = pcall(spec_func)
+			
+			if context.after then
+				setfenv(context.after, env)
+				context.after()
+			end
+			
+			-- run all afters's on enclosing contexts
+			for i=#after_stack,1,-1 do
+				local after = after_stack[i]
+				setfenv(after, env)
+				after()
+			end
+			
+			
 			if not success then
 				spec:add_results(false, message, debug.traceback())
 			end
 		end
 	end
 	
-	-- update the before_stack with current before and run sub-contexts
-	before_stack[#before_stack+1] = context.before
+	-- make a copy and update the before_stack and after_stack with current before and after and run sub-contexts
+	local before_stack_copy = {}
+	
+	for i,v in ipairs(before_stack) do
+		before_stack_copy[i] = v
+	end
+		
+	before_stack_copy[#before_stack_copy+1] = context.before
+
+	local after_stack_copy = {}
+	
+	for i,v in ipairs(after_stack_copy) do
+		after_stack_copy[i] = v
+	end
+		
+	after_stack_copy[#after_stack_copy+1] = context.after
 	
 	for subcontext_name, subcontext in pairs(context.sub_contexts) do
-		run_context(subcontext_name, subcontext, before_stack)
+		run_context(subcontext_name, subcontext, before_stack_copy, after_stack_copy)
 	end
 end
 
