@@ -65,22 +65,33 @@ describe["a Mock"] = function()
 	
 	describe["when specifying a return value"] = function()
 		before = function()
-			mock:should_return(10)
+			mock:returns(10)
 		end
 		
 		it["should return that value when called as a function"] = function()
 			expect(mock()).should_be(10)
 		end
 	end
-
+	
+	describe["when specifying subsequent return values"] = function()
+		before = function()
+			mock:returns(10):then_returns(25)
+		end
+		
+		it["should return that value when called as a function"] = function()
+			expect(mock()).should_be(10)
+			expect(mock()).should_be(25)
+		end
+	end
+	
 	describe["when specifying a return value using . instead of :"] = function()
 		before = function()
-			err = track_error(function() mock.should_return(10) end)
+			err = track_error(function() mock.returns(10) end)
 		end
 		
 		it["should produce an error"] = function()
 			expect(err).should_not_be(nil)
 		end
-	end
-	
+	end	
 end
+

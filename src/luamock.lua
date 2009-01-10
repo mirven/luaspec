@@ -14,31 +14,32 @@ function Mock.__call(mock, ...)
 	
 	local return_values = Mock.return_values[mock]
 	
-	if return_values then
-		return unpack(return_values)
+	if return_values and return_values[#calls] then	
+		return unpack(return_values[#calls])
 	end
 end
 
-function Mock.__index(mock, k)
+function Mock.__index(mock, key)
 	local new_mock = Mock:new()
-	rawset(mock, k, new_mock)
+	rawset(mock, key, new_mock)
 	return new_mock
 end
 
 function Mock:new()
-	local mock = { should_return = self.should_return }
+	local mock = { returns = self.returns, then_returns = self.returns }
 	setmetatable(mock, self)
 	return mock
 end
 
-function Mock:should_return(...)
+function Mock:returns(...)
 	if getmetatable(self) ~= Mock then
-		error("should_return must be called with : operator", 2)
+		error("returns must be called with : operator", 2)
 	end
-	Mock.return_values[self] = {...}
+	local return_values = Mock.return_values[self] or {}
+	return_values[#return_values+1] = {...}
+	Mock.return_values[self] = return_values
+	return self
 end
-
--- define matchers used with mocks
 
 matchers = matchers or {}
 
@@ -50,7 +51,34 @@ function matchers.was_called(target, value)
 	local calls = Mock.calls[target] or {}
 	
 	if #calls ~= value then
-		return false, "expecting "..value.." calls, actually "..#calls
+		return false, "expecting "..tostring(value).." calls, actually "..#calls
+	end
+	return true
+end
+
+function matchers.was_called_with(target, ...)
+	if getmetatable(target) ~= Mock then
+		return false, "target must be a Mock"
+	end
+	
+	local calls = Mock.calls[target] or {}
+	
+	if #calls ~= 1 then
+		return false, "expecting "..tostring(1).." call, actually "..#calls 
+	end
+	
+	local params = calls[1] or {}
+	
+	local args = {...}
+	
+	if #args ~= #params then
+		return false, "expecting "..#args.." parameters, actually "..#params
+	end
+	
+	for i=1,#args do
+		if args[i] ~= params[i] then
+			return false, "expecting parameter #"..tostring(i).." to be "..tostring(args[i]).." actually "..tostring(params[i])
+		end
 	end
 	return true
 end
