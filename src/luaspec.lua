@@ -2,17 +2,21 @@ spec = {
   contexts = {}, passed = 0, failed = 0, pending = 0, current = nil
 }
 
-function spec:compute_report()
+Report = {}
+Report.__index = Report
+
+function Report:new(spec)
 	local report = {		
-		num_passed = self.passed,
-		num_failed = self.failed,
-		num_pending = self.pending,
-		total = self.passed + self.failed + self.pending,
+		num_passed = spec.passed,
+		num_failed = spec.failed,
+		num_pending = spec.pending,
+		total = spec.passed + spec.failed + spec.pending,
 		results = {}
 	}
-	report.percent = self.passed/report.total*100
 	
-	local contexts = self.contexts
+	report.percent = report.num_passed/report.total*100
+		
+	local contexts = spec.contexts
 	
 	for index = 1, #contexts do
 		report.results[index] = {
@@ -21,11 +25,11 @@ function spec:compute_report()
 		}
 	end		
 	
-	return report	
+	return report		
 end
 
 function spec:report(verbose)
-	local report = self:compute_report()
+	local report = Report:new(self)
 
 	if report.num_failed == 0 and not verbose then
 		print "all tests passed"
@@ -65,7 +69,7 @@ function spec:add_results(success, message, trace)
 	if success then
 		self.passed = self.passed + 1
 	else
-		table.insert(self.current.errors , { message = message, trace = trace } )
+		table.insert(self.current.errors, { message = message, trace = trace })
 		self.failed = self.failed + 1
 	end
 end
@@ -84,13 +88,14 @@ end
 function spec:add_pending_spec(context_name, spec_name, pending_description)
 end
 
+--
+
 -- create tables to support pending specifications
 local pending = {}
-local pending_mt = {}
 
-function pending_mt.__newindex() error("You can't set properties on pending") end
+function pending.__newindex() error("You can't set properties on pending") end
 
-function pending_mt.__index(_, key) 
+function pending.__index(_, key) 
 	if key == "description" then 
 		return nil 
 	else
@@ -98,13 +103,15 @@ function pending_mt.__index(_, key)
 	end
 end
 
-function pending_mt.__call(_, description)
+function pending.__call(_, description)
 	local o = { description = description}
-	setmetatable(o, pending_mt)
+	setmetatable(o, pending)
 	return o
 end	
 
-setmetatable(pending, pending_mt)
+setmetatable(pending, pending)
+
+--
 
 -- define matchers
 
@@ -144,13 +151,14 @@ matchers = {
  
 matchers.should_equal = matchers.should_be
 
+--
+
 -- expect returns an empty table with a 'method missing' metatable
 -- which looks up the matcher.  The 'method missing' function
 -- runs the matcher and records the result in the current spec
 local function expect(target)
-	local t = {}
-	setmetatable(t, { 
-		__index = function(t, matcher)
+	return setmetatable({}, { 
+		__index = function(_, matcher)
 			return function(...)
 				local success, message = matchers[matcher](target, ...)
 			
@@ -158,88 +166,92 @@ local function expect(target)
 			end
 		end
 	})
-	return t
 end
 
-local function run_context(context_name, context, before_stack, after_stack)
 
-	before_stack = before_stack or {}
-	after_stack = after_stack or {}
-	
-	-- run all of the context's specs
-	for spec_name, spec_func in pairs(context.specs) do
-		
-		-- check to see if the spec is pending or not
-		if getmetatable(spec_func) == pending_mt then
-			spec:add_pending_spec(context_name, spec_name, spec_func.description)
+--
+
+Context = {}
+Context.__index = Context
+
+function Context:new(context)
+	for _, child in ipairs(context.children) do
+		child.parent = context
+	end
+	return setmetatable(context, self)
+end
+
+function Context:run_befores(env)
+	if self.parent then
+		self.parent:run_befores(env)
+	end
+	if self.before then
+		setfenv(self.before, env)
+		self.before()
+	end
+end
+
+function Context:run_afters(env)
+	if self.after then
+		setfenv(self.after, env)
+		self.after()
+	end
+	if self.parent then
+		self.parent:run_afters(env)
+	end
+end
+
+function Context:run()
+	-- run all specs
+	for spec_name, spec_func in pairs(self.specs) do
+		if getmetatable(spec_func) == pending then
 		else
-			spec:add_spec(context_name, spec_name)
-			
+			spec:add_spec(self.name, spec_name)
+	
+			local mocks = {}
+	
 			-- setup the environment that the spec is run in, each spec is run in a new environment
 			local env = {
 				track_error = function(f)
 					local status, err = pcall(f)
 					return err
 				end,
-				
-				expect = expect
+		
+				expect = expect,
+		
+				mock = function(table, key, mock_value)			
+					mocks[{ table = table, key = key }] = table[key]  -- store the old value
+					table[key] = mock_value or Mock:new()
+					return table[key]
+				end
 			}
 			setmetatable(env, { __index = _G })
-		
-			-- run all before's on enclosing contexts
-			for _, before in ipairs(before_stack) do
-				setfenv(before, env)
-				before()
-			end
-		
-			if context.before then
-				setfenv(context.before, env)
-				context.before()
-			end
 
+			-- run each spec with proper befores and afters
+			self:run_befores(env)
+	
 			setfenv(spec_func, env)
 			local success, message = pcall(spec_func)
-			
-			if context.after then
-				setfenv(context.after, env)
-				context.after()
-			end
-			
-			-- run all afters's on enclosing contexts
-			for i=#after_stack,1,-1 do
-				local after = after_stack[i]
-				setfenv(after, env)
-				after()
-			end
-			
-			
+
+			self:run_afters(env)
+		
 			if not success then
 				spec:add_results(false, message, debug.traceback())
+			end		
+		
+			-- restore stored values for mocks
+			for key, old_value in pairs(mocks) do
+				key.table[key.key] = old_value
 			end
 		end
 	end
 	
-	-- make a copy and update the before_stack and after_stack with current before and after and run sub-contexts
-	local before_stack_copy = {}
-	
-	for i,v in ipairs(before_stack) do
-		before_stack_copy[i] = v
-	end
-		
-	before_stack_copy[#before_stack_copy+1] = context.before
-
-	local after_stack_copy = {}
-	
-	for i,v in ipairs(after_stack_copy) do
-		after_stack_copy[i] = v
-	end
-		
-	after_stack_copy[#after_stack_copy+1] = context.after
-	
-	for subcontext_name, subcontext in pairs(context.sub_contexts) do
-		run_context(subcontext_name, subcontext, before_stack_copy, after_stack_copy)
+	for _, child in pairs(self.children) do
+		child:run()
 	end
 end
+
+-- dsl for creating contexts
 
 local function make_it_table()
 	-- create and set metatables for 'it'
@@ -273,7 +285,7 @@ local function create_context_env()
 	return context_env, sub_contexts, specs
 end
 
--- Note: this is declared locally earlier so it is still local, not 100% sure why i can't redeclare it as local
+-- Note: this is declared locally earlier so it is still local
 function make_describe_table(auto_run)
 	local describe = {}
 	local contexts = {}
@@ -294,15 +306,16 @@ function make_describe_table(auto_run)
 			context_function()			
 			
 			-- store the describe function in contexts
-			contexts[context_name] = { 
-				before=context_env.before, 
-				after=context_env.after, 
-				specs=specs, 
-				sub_contexts = sub_contexts 
+			contexts[#contexts+1] = Context:new { 
+				name = context_name,
+				before = context_env.before, 
+				after = context_env.after, 
+				specs = specs, 
+				children = sub_contexts 
 			}
 			
 			if auto_run then
-				run_context(context_name, contexts[context_name])
+				contexts[#contexts]:run()
 			end
 		end
 	}
