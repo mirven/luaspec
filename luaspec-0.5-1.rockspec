@@ -1,8 +1,7 @@
 package = "LuaSpec"
 version = "0.5-1"
 source = {
-	-- url = "http://github.com/mirven/luaspec/zipball/master" -- zip file from the master branch at github
-	url = "http://marcusirven.com/luaspec-"..version..".zip"
+	url = "http://marcusirven.s3.amazonaws.com/rocks/luaspec-"..version..".zip"
 }
 description = {
 	summary = "A context specification framework",
